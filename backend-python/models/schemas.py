@@ -1,0 +1,67 @@
+from pydantic import BaseModel, Field
+from typing import Optional, List
+from datetime import datetime
+
+
+# ── Upload ──────────────────────────────────────────────────────────────────
+
+class DocumentUploadResponse(BaseModel):
+    document_id: str
+    filename: str
+    total_pages: int
+    total_chunks: int
+    message: str = "Contract uploaded and processed successfully"
+
+
+# ── Chat / Q&A ───────────────────────────────────────────────────────────────
+
+class ChatRequest(BaseModel):
+    document_id: str
+    question: str = Field(..., min_length=3, max_length=1000)
+
+
+class SourceChunk(BaseModel):
+    chunk_index: int
+    page_number: Optional[int]
+    text: str                   # snippet shown to user
+    risk_label: Optional[str]   # populated in Phase 2
+
+
+class ChatResponse(BaseModel):
+    answer: str
+    source_chunks: List[SourceChunk]
+    document_id: str
+
+
+# ── Document list ────────────────────────────────────────────────────────────
+
+class DocumentSummary(BaseModel):
+    id: str
+    filename: str
+    total_pages: int
+    total_chunks: int
+    risk_score: Optional[float]
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ── Risk Analysis (Phase 2) ──────────────────────────────────────────────────
+
+class RiskClause(BaseModel):
+    chunk_id: str
+    chunk_index: int
+    page_number: Optional[int]
+    text: str
+    risk_label: str               # HIGH | MEDIUM | LOW
+    risk_category: str            # non_compete | termination | liability | auto_renewal | penalty
+    risk_explanation: str         # plain English
+
+
+class RiskAnalysisResponse(BaseModel):
+    document_id: str
+    overall_risk_score: float     # 0-100
+    risk_breakdown: dict          # {"HIGH": n, "MEDIUM": n, "LOW": n}
+    risky_clauses: List[RiskClause]
+    summary: str
