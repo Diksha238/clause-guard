@@ -292,3 +292,65 @@ async def compare_two_contracts(
     result = compare_contracts(db=db, doc_id_a=request.document_id_a, doc_id_b=request.document_id_b)
 
     return CompareResponse(**result)
+# ── PDF Report Export ────────────────────────────────────────────────────────
+
+@router.get("/documents/{document_id}/report")
+async def download_risk_report_pdf(
+    document_id: str,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user),
+):
+    """
+    Generate and download a polished PDF risk report for a document.
+
+    Requires the document to have already been analyzed via /analyze
+    (uses stored risk_score, risk_summary, and per-chunk risk fields).
+    """
+    from fastapi.responses import Response
+    from analysis.pdf_report import generate_risk_report_pdf
+    from analysis.summarizer import summarize_contract
+    from models.db_models import DocumentChunk
+
+    document = db.query(Document).filter(
+        Document.id == document_id,
+        Document.user_id == user_id,
+    ).first()
+
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if document.risk_score is None:
+        raise HTTPException(status_code=400, detail="Document has not been analyzed yet. Call /analyze first.")
+
+    risky_chunks = db.query(DocumentChunk).filter(
+        DocumentChunk.document_id == document_id,
+        DocumentChunk.risk_label.isnot(None),
+    ).order_by(DocumentChunk.chunk_index).all()
+
+    risky_clauses = [
+        {
+            "risk_label": c.risk_label,
+            "risk_category": c.risk_category,
+            "page_number": c.page_number,
+            "text": c.text,
+            "risk_explanation": c.risk_explanation,
+        }
+        for c in risky_chunks
+    ]
+
+    summary = summarize_contract(db=db, document_id=document_id)
+
+    pdf_bytes = generate_risk_report_pdf(
+        filename=document.filename,
+        overall_risk_score=document.risk_score,
+        risk_breakdown=document.risk_summary or {"HIGH": 0, "MEDIUM": 0, "LOW": 0},
+        risky_clauses=risky_clauses,
+        summary=summary,
+    )
+
+    safe_name = document.filename.rsplit(".", 1)[0]
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="clauseguard-report-{safe_name}.pdf"'},
+    )
