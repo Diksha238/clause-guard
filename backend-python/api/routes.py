@@ -15,6 +15,9 @@ from models.schemas import (
     DocumentSummary,
     RiskAnalysisResponse,
     RiskClause,
+    CompareRequest,
+    CompareResponse,
+    ComparisonDifference,
 )
 from models.db_models import Document
 from ingestion.pipeline import ingest_document
@@ -254,3 +257,38 @@ async def analyze_document_risks(
         risky_clauses=risky_clauses,
         summary=summary,
     )
+# ── Contract Comparison ──────────────────────────────────────────────────────
+
+@router.post("/compare", response_model=CompareResponse)
+async def compare_two_contracts(
+    request: CompareRequest,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user),
+):
+    """
+    Compare two contracts and highlight key differences.
+
+    Both documents must belong to the requesting user.
+    Returns aspect-by-aspect comparison with severity ratings
+    and an overall recommendation.
+    """
+    from analysis.comparator import compare_contracts
+
+    doc_a = db.query(Document).filter(
+        Document.id == request.document_id_a,
+        Document.user_id == user_id,
+    ).first()
+    doc_b = db.query(Document).filter(
+        Document.id == request.document_id_b,
+        Document.user_id == user_id,
+    ).first()
+
+    if not doc_a or not doc_b:
+        raise HTTPException(status_code=404, detail="One or both documents not found")
+
+    if request.document_id_a == request.document_id_b:
+        raise HTTPException(status_code=400, detail="Cannot compare a document with itself")
+
+    result = compare_contracts(db=db, doc_id_a=request.document_id_a, doc_id_b=request.document_id_b)
+
+    return CompareResponse(**result)

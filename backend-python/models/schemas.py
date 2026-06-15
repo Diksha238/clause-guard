@@ -65,3 +65,24 @@ class RiskAnalysisResponse(BaseModel):
     risk_breakdown: dict          # {"HIGH": n, "MEDIUM": n, "LOW": n}
     risky_clauses: List[RiskClause]
     summary: str
+# ── Contract Comparison ──────────────────────────────────────────────────────
+
+class CompareRequest(BaseModel):
+    document_id_a: str
+    document_id_b: str
+
+
+class ComparisonDifference(BaseModel):
+    aspect: str
+    contract_a: str
+    contract_b: str
+    impact: str
+    severity: str
+
+
+class CompareResponse(BaseModel):
+    summary: str
+    differences: List[ComparisonDifference]
+    recommendation: str
+    document_a: dict
+    document_b: dict
