@@ -18,6 +18,7 @@ from models.schemas import (
     CompareRequest,
     CompareResponse,
     ComparisonDifference,
+    ChatMessageOut,
 )
 from models.db_models import Document
 from ingestion.pipeline import ingest_document
@@ -139,6 +140,23 @@ async def chat_with_contract(
         )
         for chunk in chunks
     ]
+    # Persist chat history for this document
+    from models.db_models import ChatMessage
+
+    user_msg = ChatMessage(
+        document_id=request.document_id,
+        role="user",
+        content=request.question,
+    )
+    ai_msg = ChatMessage(
+        document_id=request.document_id,
+        role="ai",
+        content=answer,
+        sources=[s.model_dump() for s in source_chunks],
+    )
+    db.add(user_msg)
+    db.add(ai_msg)
+    db.commit()
 
     return ChatResponse(
         answer=answer,
@@ -354,3 +372,32 @@ async def download_risk_report_pdf(
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="clauseguard-report-{safe_name}.pdf"'},
     )
+# ── Chat History ──────────────────────────────────────────────────────────────
+
+@router.get("/documents/{document_id}/messages", response_model=list[ChatMessageOut])
+async def get_chat_history(
+    document_id: str,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user),
+):
+    """
+    Get the full chat conversation history for a document.
+
+    Used to restore previous Q&A sessions when a user re-opens
+    a document from their history sidebar (ChatGPT/Claude-style).
+    """
+    from models.db_models import ChatMessage
+
+    document = db.query(Document).filter(
+        Document.id == document_id,
+        Document.user_id == user_id,
+    ).first()
+
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    messages = db.query(ChatMessage).filter(
+        ChatMessage.document_id == document_id
+    ).order_by(ChatMessage.created_at).all()
+
+    return messages

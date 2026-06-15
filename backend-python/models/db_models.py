@@ -44,3 +44,13 @@ class DocumentChunk(Base):
     risk_explanation = Column(Text, nullable=True)   # plain English explanation
 
     document = relationship("Document", back_populates="chunks")
+class ChatMessage(Base):
+    """Stores chat conversation history per document for persistent chat-style UI."""
+    __tablename__ = "chat_messages"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    document_id = Column(String, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True)
+    role = Column(String, nullable=False)          # "user" | "ai"
+    content = Column(Text, nullable=False)
+    sources = Column(JSON, nullable=True)          # list of source chunk references (for AI messages)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

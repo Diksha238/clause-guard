@@ -86,3 +86,14 @@ class CompareResponse(BaseModel):
     recommendation: str
     document_a: dict
     document_b: dict
+# ── Chat History ──────────────────────────────────────────────────────────────
+
+class ChatMessageOut(BaseModel):
+    id: str
+    role: str
+    content: str
+    sources: Optional[List[dict]] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
