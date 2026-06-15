@@ -1,28 +1,48 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 
 const API = "http://localhost:8000/api/v1";
-const USER_ID = "user123";
-const hdrs = (extra = {}) => ({ "X-User-Id": USER_ID, ...extra });
+const AUTH_API = "http://localhost:8080/api/auth";
 
-async function apiUpload(file) {
+// ── API helpers ────────────────────────────────────────────────────────────
+const authHdrs = (token, extra = {}) => ({ Authorization: `Bearer ${token}`, ...extra });
+
+async function apiRegister(name, email, password) {
+  const r = await fetch(`${AUTH_API}/register`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, email, password }),
+  });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || data.message || "Registration failed");
+  return data;
+}
+async function apiLogin(email, password) {
+  const r = await fetch(`${AUTH_API}/login`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || data.message || "Login failed");
+  return data;
+}
+async function apiUpload(file, token) {
   const fd = new FormData();
   fd.append("file", file);
-  const r = await fetch(`${API}/upload`, { method: "POST", headers: hdrs(), body: fd });
-  if (!r.ok) throw new Error(await r.text());
+  const r = await fetch(`${API}/upload`, { method: "POST", headers: authHdrs(token), body: fd });
+  if (!r.ok) throw new Error((await r.json()).detail || "Upload failed");
   return r.json();
 }
-async function apiAnalyze(docId) {
-  const r = await fetch(`${API}/documents/${docId}/analyze`, { method: "POST", headers: hdrs({ "Content-Type": "application/json" }) });
-  if (!r.ok) throw new Error(await r.text());
+async function apiAnalyze(docId, token) {
+  const r = await fetch(`${API}/documents/${docId}/analyze`, { method: "POST", headers: authHdrs(token, { "Content-Type": "application/json" }) });
+  if (!r.ok) throw new Error((await r.json()).detail || "Analysis failed");
   return r.json();
 }
-async function apiChat(docId, question) {
+async function apiChat(docId, question, token) {
   const r = await fetch(`${API}/chat`, {
     method: "POST",
-    headers: hdrs({ "Content-Type": "application/json" }),
+    headers: authHdrs(token, { "Content-Type": "application/json" }),
     body: JSON.stringify({ document_id: docId, question }),
   });
-  if (!r.ok) throw new Error(await r.text());
+  if (!r.ok) throw new Error((await r.json()).detail || "Chat failed");
   return r.json();
 }
 
@@ -32,8 +52,71 @@ const RISK = {
   LOW:    { color: "#22c55e", bg: "#f0fdf4", border: "#86efac", darkBg: "#152d1c", darkBorder: "#14532d" },
 };
 
+// ── Auth Screen ───────────────────────────────────────────────────────────────
+function AuthScreen({ onAuth, t, dark }) {
+  const [mode, setMode] = useState("login"); // login | register
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setError(""); setLoading(true);
+    try {
+      const data = mode === "login" ? await apiLogin(email, password) : await apiRegister(name, email, password);
+      onAuth(data);
+    } catch (err) { setError(err.message); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: t.bg }}>
+      <div style={{ width: "100%", maxWidth: 400, padding: 32, background: t.card, borderRadius: 16, border: `1px solid ${t.cardBorder}` }}>
+        <div style={{ textAlign: "center", marginBottom: 28 }}>
+          <div style={{ width: 56, height: 56, background: "linear-gradient(135deg, #3b82f6, #6366f1)", borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px" }}>
+            <i className="ti ti-shield-check" style={{ fontSize: 28, color: "#fff" }} />
+          </div>
+          <h1 style={{ margin: "0 0 6px", fontSize: 22, fontWeight: 700, color: t.text }}>ClauseGuard</h1>
+          <p style={{ margin: 0, fontSize: 13, color: t.textMuted }}>{mode === "login" ? "Welcome back! Sign in to continue" : "Create an account to get started"}</p>
+        </div>
+
+        <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {mode === "register" && (
+            <input value={name} onChange={e => setName(e.target.value)} placeholder="Full name" required
+              style={{ padding: "11px 14px", borderRadius: 8, border: `1px solid ${t.inputBorder}`, background: t.input, color: t.text, fontSize: 14 }} />
+          )}
+          <input value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="Email" required
+            style={{ padding: "11px 14px", borderRadius: 8, border: `1px solid ${t.inputBorder}`, background: t.input, color: t.text, fontSize: 14 }} />
+          <input value={password} onChange={e => setPassword(e.target.value)} type="password" placeholder="Password (min 6 characters)" required minLength={6}
+            style={{ padding: "11px 14px", borderRadius: 8, border: `1px solid ${t.inputBorder}`, background: t.input, color: t.text, fontSize: 14 }} />
+
+          {error && <p style={{ fontSize: 13, color: "#ef4444", margin: 0, padding: "8px 12px", background: dark ? "#2d1515" : "#fef2f2", borderRadius: 8 }}>{error}</p>}
+
+          <button type="submit" disabled={loading} style={{
+            padding: "12px 0", borderRadius: 8, border: "none", fontWeight: 600, fontSize: 14,
+            background: "linear-gradient(135deg, #3b82f6, #6366f1)", color: "#fff", marginTop: 4,
+            opacity: loading ? 0.7 : 1,
+          }}>
+            {loading ? "Please wait…" : mode === "login" ? "Sign In" : "Create Account"}
+          </button>
+        </form>
+
+        <p style={{ textAlign: "center", marginTop: 18, fontSize: 13, color: t.textMuted }}>
+          {mode === "login" ? "Don't have an account? " : "Already have an account? "}
+          <button onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); }} style={{ background: "none", border: "none", color: "#3b82f6", fontWeight: 600, fontSize: 13, padding: 0 }}>
+            {mode === "login" ? "Sign up" : "Sign in"}
+          </button>
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [dark, setDark] = useState(false);
+  const [auth, setAuth] = useState(null); // { token, name, email, userId }
   const [doc, setDoc] = useState(null);
   const [analysis, setAnalysis] = useState(null);
   const [history, setHistory] = useState([]);
@@ -47,8 +130,8 @@ export default function App() {
   const [animScore, setAnimScore] = useState(0);
   const [copiedIdx, setCopiedIdx] = useState(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
   const chatEnd = useRef();
-  const drag = useRef(false);
 
   const d = dark;
   const t = {
@@ -69,8 +152,6 @@ export default function App() {
     userBubble: "#3b82f6",
     aiBubble: d ? "#334155" : "#f1f5f9",
     aiText: d ? "#f1f5f9" : "#1e293b",
-    accent: "#3b82f6",
-    danger: "#ef4444",
   };
 
   useEffect(() => {
@@ -88,14 +169,22 @@ export default function App() {
     }
   }, [analysis]);
 
+  const handleAuth = (data) => {
+    setAuth({ token: data.token, name: data.name, email: data.email, userId: data.userId });
+  };
+
+  const handleLogout = () => {
+    setAuth(null); setDoc(null); setAnalysis(null); setMessages([]); setHistory([]); setShowUserMenu(false);
+  };
+
   const handleUpload = async (file) => {
     if (!file || file.type !== "application/pdf") { setError("Please upload a PDF file."); return; }
     setError(""); setLoading(true); setDoc(null); setAnalysis(null); setMessages([]); setAnimScore(0);
     try {
-      const d = await apiUpload(file);
+      const d = await apiUpload(file, auth.token);
       setDoc(d);
       setMessages([{ role: "ai", content: `📄 Processed **${d.filename}** — ${d.total_pages} pages, ${d.total_chunks} chunks indexed.\n\nRunning risk analysis…`, time: new Date() }]);
-      const risk = await apiAnalyze(d.document_id);
+      const risk = await apiAnalyze(d.document_id, auth.token);
       setAnalysis(risk);
       setHistory(prev => [{ ...d, risk_score: risk.overall_risk_score, risk_breakdown: risk.risk_breakdown, timestamp: new Date() }, ...prev.slice(0, 9)]);
       const hi = risk.risk_breakdown.HIGH, med = risk.risk_breakdown.MEDIUM, lo = risk.risk_breakdown.LOW;
@@ -115,7 +204,7 @@ export default function App() {
     setMessages(prev => [...prev, { role: "user", content: q, time: new Date() }]);
     setChatLoading(true);
     try {
-      const res = await apiChat(doc.document_id, q);
+      const res = await apiChat(doc.document_id, q, auth.token);
       setMessages(prev => [...prev, { role: "ai", content: res.answer, sources: res.source_chunks, time: new Date() }]);
     } catch { setMessages(prev => [...prev, { role: "ai", content: "Something went wrong. Please try again.", time: new Date() }]); }
     finally { setChatLoading(false); setTimeout(() => chatEnd.current?.scrollIntoView({ behavior: "smooth" }), 100); }
@@ -130,21 +219,13 @@ export default function App() {
   const exportReport = () => {
     if (!analysis || !doc) return;
     const lines = [
-      `CLAUSEGUARD RISK REPORT`,
-      `========================`,
-      `Document: ${doc.filename}`,
-      `Pages: ${doc.total_pages} | Chunks: ${doc.total_chunks}`,
-      `Generated: ${new Date().toLocaleString()}`,
-      ``,
+      `CLAUSEGUARD RISK REPORT`, `========================`,
+      `Document: ${doc.filename}`, `Pages: ${doc.total_pages} | Chunks: ${doc.total_chunks}`,
+      `Generated: ${new Date().toLocaleString()}`, ``,
       `OVERALL RISK SCORE: ${Math.round(analysis.overall_risk_score)}/100`,
-      `HIGH: ${analysis.risk_breakdown.HIGH} | MEDIUM: ${analysis.risk_breakdown.MEDIUM} | LOW: ${analysis.risk_breakdown.LOW}`,
-      ``,
-      `SUMMARY`,
-      `-------`,
-      analysis.summary,
-      ``,
-      `RISKY CLAUSES`,
-      `-------------`,
+      `HIGH: ${analysis.risk_breakdown.HIGH} | MEDIUM: ${analysis.risk_breakdown.MEDIUM} | LOW: ${analysis.risk_breakdown.LOW}`, ``,
+      `SUMMARY`, `-------`, analysis.summary, ``,
+      `RISKY CLAUSES`, `-------------`,
       ...analysis.risky_clauses.map((c, i) =>
         `\n[${i+1}] ${c.risk_label} — ${c.risk_category?.replace(/_/g," ")} (Page ${c.page_number})\n${c.risk_explanation}\n\nClause text: "${c.text.slice(0,200)}..."`
       ),
@@ -169,22 +250,37 @@ export default function App() {
 
   const QUICK = ["What is the notice period?", "Any non-compete clauses?", "What are the penalty terms?", "Key obligations of each party?", "What happens on default?", "Is there an auto-renewal clause?"];
 
+  const baseStyles = (
+    <style>{`
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+      * { box-sizing: border-box; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      @keyframes pulse { 0%,100%{opacity:.3;transform:scale(.75)} 50%{opacity:1;transform:scale(1)} }
+      @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+      @keyframes slideIn { from{opacity:0;transform:translateX(-12px)} to{opacity:1;transform:translateX(0)} }
+      ::-webkit-scrollbar{width:4px} ::-webkit-scrollbar-track{background:transparent} ::-webkit-scrollbar-thumb{background:#475569;border-radius:2px}
+      input:focus,textarea:focus{outline:none}
+      button{cursor:pointer; font-family: inherit;}
+    `}</style>
+  );
+
+  // ── NOT LOGGED IN ──────────────────────────────────────────────────────────
+  if (!auth) {
+    return (
+      <div style={{ minHeight: "100vh", background: t.bg, fontFamily: "'Inter', -apple-system, sans-serif" }}>
+        {baseStyles}
+        <AuthScreen onAuth={handleAuth} t={t} dark={d} />
+      </div>
+    );
+  }
+
+  // ── LOGGED IN ──────────────────────────────────────────────────────────────
   return (
     <div style={{ minHeight: "100vh", background: t.bg, fontFamily: "'Inter', -apple-system, sans-serif", transition: "background 0.3s, color 0.3s" }}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        * { box-sizing: border-box; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        @keyframes pulse { 0%,100%{opacity:.3;transform:scale(.75)} 50%{opacity:1;transform:scale(1)} }
-        @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
-        @keyframes slideIn { from{opacity:0;transform:translateX(-12px)} to{opacity:1;transform:translateX(0)} }
-        ::-webkit-scrollbar{width:4px} ::-webkit-scrollbar-track{background:transparent} ::-webkit-scrollbar-thumb{background:#475569;border-radius:2px}
-        input:focus,textarea:focus{outline:none}
-        button{cursor:pointer}
-      `}</style>
+      {baseStyles}
 
       {/* NAV */}
-      <nav style={{ background: t.navBg, borderBottom: `1px solid ${t.navBorder}`, padding: "0 24px", display: "flex", alignItems: "center", height: 58, gap: 12, position: "sticky", top: 0, zIndex: 100, transition: "background 0.3s" }}>
+      <nav style={{ background: t.navBg, borderBottom: `1px solid ${t.navBorder}`, padding: "0 24px", display: "flex", alignItems: "center", height: 58, gap: 12, position: "sticky", top: 0, zIndex: 100 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <div style={{ width: 32, height: 32, background: "linear-gradient(135deg, #3b82f6, #6366f1)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center" }}>
             <i className="ti ti-shield-check" style={{ fontSize: 18, color: "#fff" }} />
@@ -212,6 +308,24 @@ export default function App() {
           <button onClick={() => setDark(!d)} style={{ width: 36, height: 36, borderRadius: 8, background: t.input, border: `1px solid ${t.inputBorder}`, color: t.text, display: "flex", alignItems: "center", justifyContent: "center" }}>
             <i className={`ti ti-${d ? "sun" : "moon"}`} style={{ fontSize: 16 }} />
           </button>
+
+          {/* User menu */}
+          <div style={{ position: "relative" }}>
+            <button onClick={() => setShowUserMenu(!showUserMenu)} style={{ width: 36, height: 36, borderRadius: 8, background: "linear-gradient(135deg, #3b82f6, #6366f1)", border: "none", color: "#fff", fontWeight: 700, fontSize: 14 }}>
+              {auth.name?.[0]?.toUpperCase() || "U"}
+            </button>
+            {showUserMenu && (
+              <div style={{ position: "absolute", right: 0, top: 44, background: t.card, border: `1px solid ${t.cardBorder}`, borderRadius: 10, minWidth: 180, padding: 8, boxShadow: "0 4px 16px rgba(0,0,0,0.15)", zIndex: 200, animation: "fadeIn 0.15s ease" }}>
+                <div style={{ padding: "8px 10px", borderBottom: `1px solid ${t.cardBorder}`, marginBottom: 6 }}>
+                  <p style={{ margin: 0, fontWeight: 600, fontSize: 13, color: t.text }}>{auth.name}</p>
+                  <p style={{ margin: 0, fontSize: 11, color: t.textMuted }}>{auth.email}</p>
+                </div>
+                <button onClick={handleLogout} style={{ width: "100%", textAlign: "left", padding: "8px 10px", borderRadius: 6, background: "none", border: "none", color: "#ef4444", fontSize: 13, fontWeight: 500 }}>
+                  <i className="ti ti-logout" style={{ marginRight: 6, fontSize: 14, verticalAlign: -2 }} />Sign out
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </nav>
 
@@ -221,8 +335,7 @@ export default function App() {
           <p style={{ margin: "0 0 10px", fontWeight: 600, fontSize: 13, color: t.text }}>Recent contracts</p>
           <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 4 }}>
             {history.map((h, i) => (
-              <div key={i} style={{ minWidth: 200, padding: "10px 14px", borderRadius: 10, border: `1px solid ${t.cardBorder}`, background: t.bg, cursor: "pointer" }}
-                onClick={() => { setShowHistory(false); }}>
+              <div key={i} style={{ minWidth: 200, padding: "10px 14px", borderRadius: 10, border: `1px solid ${t.cardBorder}`, background: t.bg, cursor: "pointer" }} onClick={() => setShowHistory(false)}>
                 <p style={{ margin: "0 0 4px", fontSize: 13, fontWeight: 600, color: t.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{h.filename}</p>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <span style={{ fontSize: 11, fontWeight: 700, color: h.risk_score >= 60 ? "#ef4444" : h.risk_score >= 30 ? "#f59e0b" : "#22c55e" }}>{Math.round(h.risk_score)}/100</span>
@@ -236,13 +349,12 @@ export default function App() {
 
       <div style={{ maxWidth: 1200, margin: "0 auto", padding: "20px 20px" }}>
         {!doc && !loading ? (
-          /* UPLOAD SCREEN */
           <div style={{ maxWidth: 600, margin: "60px auto", animation: "fadeIn 0.4s ease" }}>
             <div style={{ textAlign: "center", marginBottom: 32 }}>
               <div style={{ width: 64, height: 64, background: "linear-gradient(135deg, #3b82f6, #6366f1)", borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
                 <i className="ti ti-shield-check" style={{ fontSize: 32, color: "#fff" }} />
               </div>
-              <h1 style={{ margin: "0 0 8px", fontSize: 28, fontWeight: 700, color: t.text }}>Analyze any contract</h1>
+              <h1 style={{ margin: "0 0 8px", fontSize: 28, fontWeight: 700, color: t.text }}>Welcome, {auth.name?.split(" ")[0]}!</h1>
               <p style={{ margin: 0, fontSize: 15, color: t.textMuted }}>Upload a PDF — get instant risk analysis, plain English explanations, and AI Q&A</p>
             </div>
 
@@ -273,9 +385,7 @@ export default function App() {
           </div>
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, animation: "fadeIn 0.4s ease" }}>
-            {/* LEFT PANEL */}
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-              {/* Score Card */}
               {analysis && (
                 <div style={{ background: t.card, borderRadius: 16, border: `1px solid ${t.cardBorder}`, padding: 22, animation: "slideIn 0.4s ease" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 20, marginBottom: 18 }}>
@@ -306,7 +416,6 @@ export default function App() {
                 </div>
               )}
 
-              {/* Tabs */}
               {analysis && (
                 <div style={{ background: t.card, borderRadius: 16, border: `1px solid ${t.cardBorder}`, flex: 1, display: "flex", flexDirection: "column" }}>
                   <div style={{ display: "flex", borderBottom: `1px solid ${t.cardBorder}`, padding: "0 4px" }}>
@@ -318,7 +427,6 @@ export default function App() {
                         flex: 1, padding: "13px 0", fontSize: 13, fontWeight: tab === tab2.key ? 600 : 400,
                         background: "none", border: "none", color: tab === tab2.key ? t.tabActive : t.tabInactive,
                         borderBottom: tab === tab2.key ? "2px solid #3b82f6" : "2px solid transparent",
-                        transition: "all 0.15s",
                       }}>{tab2.label}</button>
                     ))}
                   </div>
@@ -327,8 +435,7 @@ export default function App() {
                     <div style={{ padding: "12px 14px 0" }}>
                       <div style={{ position: "relative", marginBottom: 12 }}>
                         <i className="ti ti-search" style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", fontSize: 14, color: t.textSub }} />
-                        <input value={search} onChange={e => setSearch(e.target.value)}
-                          placeholder="Search clauses…"
+                        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search clauses…"
                           style={{ width: "100%", padding: "8px 10px 8px 32px", borderRadius: 8, border: `1px solid ${t.inputBorder}`, background: t.input, color: t.text, fontSize: 13 }} />
                       </div>
                     </div>
@@ -351,7 +458,6 @@ export default function App() {
               )}
             </div>
 
-            {/* RIGHT PANEL — CHAT */}
             <div style={{ background: t.card, borderRadius: 16, border: `1px solid ${t.cardBorder}`, display: "flex", flexDirection: "column", height: "calc(100vh - 100px)", position: "sticky", top: 76 }}>
               <div style={{ padding: "14px 18px", borderBottom: `1px solid ${t.cardBorder}`, display: "flex", alignItems: "center", gap: 10 }}>
                 <div style={{ width: 32, height: 32, background: "linear-gradient(135deg, #3b82f6, #6366f1)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -403,7 +509,7 @@ export default function App() {
               <div style={{ padding: "10px 14px", borderTop: `1px solid ${t.cardBorder}` }}>
                 <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 10 }}>
                   {QUICK.map(q => (
-                    <button key={q} onClick={() => { setQuestion(q); }} style={{
+                    <button key={q} onClick={() => setQuestion(q)} style={{
                       fontSize: 11, padding: "4px 10px", borderRadius: 20,
                       background: t.quickBtn, border: `1px solid ${t.quickBtnBorder}`,
                       color: t.textMuted, transition: "all 0.1s",
@@ -412,9 +518,8 @@ export default function App() {
                 </div>
                 <form onSubmit={handleChat} style={{ display: "flex", gap: 8 }}>
                   <input value={question} onChange={e => setQuestion(e.target.value)}
-                    placeholder={doc ? "Ask anything about this contract…" : "Upload a contract first…"}
-                    disabled={!doc}
-                    style={{ flex: 1, fontSize: 13, padding: "10px 14px", borderRadius: 10, border: `1px solid ${t.inputBorder}`, background: t.input, color: t.text, transition: "border 0.15s" }} />
+                    placeholder={doc ? "Ask anything about this contract…" : "Upload a contract first…"} disabled={!doc}
+                    style={{ flex: 1, fontSize: 13, padding: "10px 14px", borderRadius: 10, border: `1px solid ${t.inputBorder}`, background: t.input, color: t.text }} />
                   <button type="submit" disabled={!question.trim() || chatLoading || !doc} style={{
                     width: 42, height: 42, borderRadius: 10, border: "none",
                     background: question.trim() && doc ? "linear-gradient(135deg, #3b82f6, #6366f1)" : t.input,

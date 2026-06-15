@@ -6,6 +6,7 @@ import os
 
 from config.database import get_db
 from config.settings import get_settings
+from config.jwt_auth import verify_jwt_token
 from models.schemas import (
     DocumentUploadResponse,
     ChatRequest,
@@ -15,12 +16,12 @@ from models.schemas import (
     RiskAnalysisResponse,
     RiskClause,
 )
-from analysis.risk_scanner import scan_document_for_risks
-from analysis.summarizer import summarize_contract
 from models.db_models import Document
 from ingestion.pipeline import ingest_document
 from retrieval.vector_search import retrieve_similar_chunks
 from retrieval.llm_qa import generate_answer
+from analysis.risk_scanner import scan_document_for_risks
+from analysis.summarizer import summarize_contract
 
 settings = get_settings()
 router = APIRouter()
@@ -28,15 +29,14 @@ router = APIRouter()
 
 # ── Auth helper ───────────────────────────────────────────────────────────────
 
-def get_current_user(x_user_id: str = Header(...)) -> str:
+def get_current_user(user_email: str = Depends(verify_jwt_token)) -> str:
     """
-    Simple header-based user ID for now.
-    In Phase 2, this will verify JWT with Spring Boot auth service.
-    Spring Boot passes verified user_id as X-User-Id header via API gateway.
+    Verifies the JWT issued by the Spring Boot auth-service and
+    returns the user's email (used as user_id throughout).
+
+    Frontend must send: Authorization: Bearer <jwt_token>
     """
-    if not x_user_id:
-        raise HTTPException(status_code=401, detail="X-User-Id header required")
-    return x_user_id
+    return user_email
 
 
 # ── Upload ────────────────────────────────────────────────────────────────────
