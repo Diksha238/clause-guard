@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str = ""
     GROQ_MODEL: str = "llama-3.3-70b-versatile"
 
+    # Gemini (Google AI Studio)
+    GEMINI_API_KEY: str = ""
+
     # Embedding model (local, free)
     EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
     EMBEDDING_DIMENSION: int = 384

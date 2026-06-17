@@ -128,7 +128,8 @@ async def chat_with_contract(
     )
 
     # Generate answer via Groq
-    answer = generate_answer(request.question, chunks)
+    from retrieval.llm_router import DEFAULT_MODEL
+    answer = generate_answer(request.question, chunks, model_key=request.model or DEFAULT_MODEL)
 
     # Build source references
     source_chunks = [
@@ -401,3 +402,13 @@ async def get_chat_history(
     ).order_by(ChatMessage.created_at).all()
 
     return messages
+# ── Models ────────────────────────────────────────────────────────────────────
+
+@router.get("/models")
+async def get_available_models(user_id: str = Depends(get_current_user)):
+    """
+    List all models the frontend can show in its model picker.
+    'available: false' models are shown for transparency but are disabled in the UI.
+    """
+    from retrieval.llm_router import list_models
+    return list_models()

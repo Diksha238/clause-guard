@@ -1,18 +1,6 @@
-from groq import Groq
 from typing import List
 from models.db_models import DocumentChunk
-from config.settings import get_settings
-
-settings = get_settings()
-
-_client: Groq | None = None
-
-
-def get_groq_client() -> Groq:
-    global _client
-    if _client is None:
-        _client = Groq(api_key=settings.GROQ_API_KEY)
-    return _client
+from retrieval.llm_router import generate, DEFAULT_MODEL
 
 
 def build_rag_prompt(question: str, chunks: List[DocumentChunk]) -> str:
@@ -46,30 +34,20 @@ INSTRUCTIONS:
 ANSWER:"""
 
 
-def generate_answer(question: str, chunks: List[DocumentChunk]) -> str:
+def generate_answer(question: str, chunks: List[DocumentChunk], model_key: str = DEFAULT_MODEL) -> str:
     """
-    Call Groq (Llama 3.3 70B) with RAG context and return the answer.
+    Generate a RAG answer using the selected model (Groq Llama variants or Gemini).
+    Falls back to the default model if an unavailable/locked model is requested.
     """
     if not chunks:
         return "I couldn't find any relevant clauses in the contract to answer this question."
 
-    client = get_groq_client()
     prompt = build_rag_prompt(question, chunks)
 
-    response = client.chat.completions.create(
-        model=settings.GROQ_MODEL,
-        messages=[
-            {
-                "role": "system",
-                "content": "You are ClauseGuard — a helpful, accurate legal contract analyzer. Always ground your answers in the actual contract text provided."
-            },
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ],
-        temperature=0.1,        # low temp for factual accuracy
+    return generate(
+        model_key=model_key,
+        system_prompt="You are ClauseGuard — a helpful, accurate legal contract analyzer. Always ground your answers in the actual contract text provided.",
+        user_prompt=prompt,
+        temperature=0.1,
         max_tokens=1024,
     )
-
-    return response.choices[0].message.content.strip()

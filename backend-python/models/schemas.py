@@ -18,6 +18,7 @@ class DocumentUploadResponse(BaseModel):
 class ChatRequest(BaseModel):
     document_id: str
     question: str = Field(..., min_length=3, max_length=1000)
+    model: Optional[str] = None   # e.g. "llama-3.3-70b", "llama-3.1-8b", "gemini-flash"
 
 
 class SourceChunk(BaseModel):
@@ -65,6 +66,8 @@ class RiskAnalysisResponse(BaseModel):
     risk_breakdown: dict          # {"HIGH": n, "MEDIUM": n, "LOW": n}
     risky_clauses: List[RiskClause]
     summary: str
+
+
 # ── Contract Comparison ──────────────────────────────────────────────────────
 
 class CompareRequest(BaseModel):
@@ -86,6 +89,8 @@ class CompareResponse(BaseModel):
     recommendation: str
     document_a: dict
     document_b: dict
+
+
 # ── Chat History ──────────────────────────────────────────────────────────────
 
 class ChatMessageOut(BaseModel):
