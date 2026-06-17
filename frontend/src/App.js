@@ -1,4 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
+import LandingPage from "./LandingPage";
+import AuthScreen from "./AuthScreen";
 
 const API = "http://localhost:8000/api/v1";
 const AUTH_API = "http://localhost:8080/api/auth";
@@ -69,68 +71,6 @@ const RISK = {
   MEDIUM: { color: "#f59e0b", bg: "#fffbeb", border: "#fcd34d", darkBg: "#2d2515", darkBorder: "#78350f" },
   LOW:    { color: "#22c55e", bg: "#f0fdf4", border: "#86efac", darkBg: "#152d1c", darkBorder: "#14532d" },
 };
-
-// ── Auth Screen ───────────────────────────────────────────────────────────────
-function AuthScreen({ onAuth, t, dark }) {
-  const [mode, setMode] = useState("login");
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-
-  const submit = async (e) => {
-    e.preventDefault();
-    setError(""); setLoading(true);
-    try {
-      const data = mode === "login" ? await apiLogin(email, password) : await apiRegister(name, email, password);
-      onAuth(data);
-    } catch (err) { setError(err.message); }
-    finally { setLoading(false); }
-  };
-
-  return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: t.bg }}>
-      <div style={{ width: "100%", maxWidth: 400, padding: 32, background: t.card, borderRadius: 16, border: `1px solid ${t.cardBorder}` }}>
-        <div style={{ textAlign: "center", marginBottom: 28 }}>
-          <div style={{ width: 56, height: 56, background: "linear-gradient(135deg, #3b82f6, #6366f1)", borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px" }}>
-            <i className="ti ti-shield-check" style={{ fontSize: 28, color: "#fff" }} />
-          </div>
-          <h1 style={{ margin: "0 0 6px", fontSize: 22, fontWeight: 700, color: t.text }}>ClauseGuard</h1>
-          <p style={{ margin: 0, fontSize: 13, color: t.textMuted }}>{mode === "login" ? "Welcome back! Sign in to continue" : "Create an account to get started"}</p>
-        </div>
-
-        <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {mode === "register" && (
-            <input value={name} onChange={e => setName(e.target.value)} placeholder="Full name" required
-              style={{ padding: "11px 14px", borderRadius: 8, border: `1px solid ${t.inputBorder}`, background: t.input, color: t.text, fontSize: 14 }} />
-          )}
-          <input value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="Email" required
-            style={{ padding: "11px 14px", borderRadius: 8, border: `1px solid ${t.inputBorder}`, background: t.input, color: t.text, fontSize: 14 }} />
-          <input value={password} onChange={e => setPassword(e.target.value)} type="password" placeholder="Password (min 6 characters)" required minLength={6}
-            style={{ padding: "11px 14px", borderRadius: 8, border: `1px solid ${t.inputBorder}`, background: t.input, color: t.text, fontSize: 14 }} />
-
-          {error && <p style={{ fontSize: 13, color: "#ef4444", margin: 0, padding: "8px 12px", background: dark ? "#2d1515" : "#fef2f2", borderRadius: 8 }}>{error}</p>}
-
-          <button type="submit" disabled={loading} style={{
-            padding: "12px 0", borderRadius: 8, border: "none", fontWeight: 600, fontSize: 14,
-            background: "linear-gradient(135deg, #3b82f6, #6366f1)", color: "#fff", marginTop: 4,
-            opacity: loading ? 0.7 : 1,
-          }}>
-            {loading ? "Please wait…" : mode === "login" ? "Sign In" : "Create Account"}
-          </button>
-        </form>
-
-        <p style={{ textAlign: "center", marginTop: 18, fontSize: 13, color: t.textMuted }}>
-          {mode === "login" ? "Don't have an account? " : "Already have an account? "}
-          <button onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); }} style={{ background: "none", border: "none", color: "#3b82f6", fontWeight: 600, fontSize: 13, padding: 0 }}>
-            {mode === "login" ? "Sign up" : "Sign in"}
-          </button>
-        </p>
-      </div>
-    </div>
-  );
-}
 
 export default function App() {
   const [dark, setDark] = useState(false);
@@ -350,13 +290,35 @@ export default function App() {
     `}</style>
   );
 
+  const [showAuth, setShowAuth] = useState(false);
+  useEffect(() => {
+  const params = new URLSearchParams(window.location.search);
+  if (window.location.pathname === "/oauth-success" || params.get("token")) {
+    const token = params.get("token");
+    const name = params.get("name");
+    const email = params.get("email");
+    const userId = params.get("userId");
+    if (token) {
+      setAuth({ token, name, email, userId });
+      window.history.replaceState({}, "", "/");
+    }
+  }
+}, []);
+
   if (!auth) {
-    return (
-      <div style={{ minHeight: "100vh", background: t.bg, fontFamily: "'Inter', -apple-system, sans-serif" }}>
-        {baseStyles}
-        <AuthScreen onAuth={handleAuth} t={t} dark={d} />
-      </div>
-    );
+    if (showAuth) {
+      return (
+        <AuthScreen
+          onAuth={handleAuth}
+          onBack={() => setShowAuth(false)}
+          apiRegister={apiRegister}
+          apiLogin={apiLogin}
+          dark={dark}
+          setDark={setDark}
+        />
+      );
+    }
+    return <LandingPage onGetStarted={() => setShowAuth(true)} dark={dark} setDark={setDark} />;
   }
 
   return (

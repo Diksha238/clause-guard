@@ -24,7 +24,7 @@ public class User {
     @Column(unique = true, nullable = false)
     private String email;
 
-    @Column(nullable = false)
+    @Column(nullable = true)   // nullable for OAuth users (Google sign-in has no local password)
     private String password;
 
     @Column(nullable = false)
@@ -32,6 +32,10 @@ public class User {
 
     @Builder.Default
     private String role = "USER";
+
+    @Builder.Default
+    @Column(name = "auth_provider")
+    private String authProvider = "local";   // "local" | "google"
 
     @Column(updatable = false)
     private LocalDateTime createdAt;
