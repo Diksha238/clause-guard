@@ -31,8 +31,13 @@ async function apiAnalyze(docId, token) {
   if (!r.ok) throw new Error((await r.json()).detail || "Analysis failed");
   return r.json();
 }
-async function apiChat(docId, question, token) {
-  const r = await fetch(`${API}/chat`, { method: "POST", headers: authHdrs(token, { "Content-Type": "application/json" }), body: JSON.stringify({ document_id: docId, question }) });
+async function apiModels(token) {
+  const r = await fetch(`${API}/models`, { headers: authHdrs(token) });
+  if (!r.ok) throw new Error("Failed to load models");
+  return r.json();
+}
+async function apiChat(docId, question, token, model) {
+  const r = await fetch(`${API}/chat`, { method: "POST", headers: authHdrs(token, { "Content-Type": "application/json" }), body: JSON.stringify({ document_id: docId, question, model }), });
   if (!r.ok) throw new Error((await r.json()).detail || "Chat failed");
   return r.json();
 }
@@ -93,6 +98,9 @@ export default function App() {
   const [compareTargets, setCompareTargets] = useState([]); // selected doc ids for compare
   const [comparisonResult, setComparisonResult] = useState(null);
   const [comparing, setComparing] = useState(false);
+  const [models, setModels] = useState([]);
+  const [selectedModel, setSelectedModel] = useState("llama-3.3-70b");
+  const [showModelPicker, setShowModelPicker] = useState(false);
   const chatEnd = useRef();
 
   const d = dark;
@@ -123,6 +131,11 @@ export default function App() {
   useEffect(() => {
     if (auth) {
       apiListDocuments(auth.token).then(setDocs).catch(() => {});
+    }
+  }, [auth]);
+  useEffect(() => {
+    if (auth) {
+      apiModels(auth.token).then(setModels).catch(() => {});
     }
   }, [auth]);
 
@@ -211,7 +224,7 @@ export default function App() {
     setMessages(prev => [...prev, { role: "user", content: q, time: new Date() }]);
     setChatLoading(true);
     try {
-      const res = await apiChat(doc.document_id, q, auth.token);
+      const res = await apiChat(doc.document_id, q, auth.token, selectedModel);
       setMessages(prev => [...prev, { role: "ai", content: res.answer, sources: res.source_chunks, time: new Date() }]);
     } catch { setMessages(prev => [...prev, { role: "ai", content: "Something went wrong. Please try again.", time: new Date() }]); }
     finally { setChatLoading(false); setTimeout(() => chatEnd.current?.scrollIntoView({ behavior: "smooth" }), 100); }
@@ -666,9 +679,44 @@ export default function App() {
                   <div ref={chatEnd} />
                 </div>
 
-                <div style={{ padding: "10px 14px", borderTop: `1px solid ${t.cardBorder}` }}>
-                  <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 10 }}>
-                    {QUICK.map(q => (
+                <div style={{ padding: "10px 14px", borderTop: `1px solid ${t.cardBorder}`, position: "relative" }}>
+  <div style={{ marginBottom: 10 }}>
+    <button onClick={() => setShowModelPicker(!showModelPicker)} style={{
+      display: "flex", alignItems: "center", gap: 6, fontSize: 12, padding: "5px 10px",
+      borderRadius: 8, background: t.quickBtn, border: `1px solid ${t.quickBtnBorder}`, color: t.text,
+    }}>
+      <i className="ti ti-cpu" style={{ fontSize: 13, color: "#3b82f6" }} />
+      {models.find(m => m.id === selectedModel)?.label || "Select model"}
+      <i className={`ti ti-chevron-${showModelPicker ? "up" : "down"}`} style={{ fontSize: 12 }} />
+    </button>
+
+    {showModelPicker && (
+      <div style={{
+        position: "absolute", bottom: "100%", left: 14, marginBottom: 8,
+        background: t.card, border: `1px solid ${t.cardBorder}`, borderRadius: 10,
+        minWidth: 220, padding: 6, boxShadow: "0 4px 16px rgba(0,0,0,0.15)", zIndex: 50,
+      }}>
+        {models.map(m => (
+          <button key={m.id}
+            disabled={!m.available}
+            onClick={() => { if (m.available) { setSelectedModel(m.id); setShowModelPicker(false); } }}
+            style={{
+              width: "100%", textAlign: "left", padding: "8px 10px", borderRadius: 6,
+              background: selectedModel === m.id ? (d ? "#1e3a5f" : "#dbeafe") : "transparent",
+              border: "none", display: "flex", alignItems: "center", justifyContent: "space-between",
+              opacity: m.available ? 1 : 0.45, cursor: m.available ? "pointer" : "not-allowed",
+            }}>
+            <span style={{ fontSize: 13, color: t.text, fontWeight: selectedModel === m.id ? 600 : 400 }}>{m.label}</span>
+            {!m.available && <i className="ti ti-lock" style={{ fontSize: 12, color: t.textSub }} />}
+            {selectedModel === m.id && <i className="ti ti-check" style={{ fontSize: 13, color: "#3b82f6" }} />}
+          </button>
+        ))}
+      </div>
+    )}
+  </div>
+
+  <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 10 }}>
+    {QUICK.map(q => (
                       <button key={q} onClick={() => setQuestion(q)} style={{
                         fontSize: 11, padding: "4px 10px", borderRadius: 20,
                         background: t.quickBtn, border: `1px solid ${t.quickBtnBorder}`,
