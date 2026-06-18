@@ -2,8 +2,8 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import LandingPage from "./LandingPage";
 import AuthScreen from "./AuthScreen";
 
-const API = "http://localhost:8000/api/v1";
-const AUTH_API = "http://localhost:8080/api/auth";
+const API = process.env.REACT_APP_API_URL || "http://localhost:8000/api/v1";
+const AUTH_API = process.env.REACT_APP_AUTH_API_URL || "http://localhost:8080/api/auth";
 
 const authHdrs = (token, extra = {}) => ({ Authorization: `Bearer ${token}`, ...extra });
 
