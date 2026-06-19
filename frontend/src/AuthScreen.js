@@ -1,7 +1,6 @@
 import { useState } from "react";
 
-const GOOGLE_AUTH_URL = "http://localhost:8080/oauth2/authorization/google";
-
+const GOOGLE_AUTH_URL = `${process.env.REACT_APP_BACKEND_BASE_URL}/oauth2/authorization/google`;
 export default function AuthScreen({ onAuth, onBack, apiRegister, apiLogin, dark, setDark }) {
   const [mode, setMode] = useState("login");
   const [name, setName] = useState("");
