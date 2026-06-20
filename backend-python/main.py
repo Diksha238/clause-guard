@@ -34,7 +34,7 @@ app = FastAPI(
 # CORS — allow React frontend (adjust in production)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "https://clauseguard.vercel.app"],
+    allow_origins=["http://localhost:3000", "https://clause-guard-ui.vercel.app"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
