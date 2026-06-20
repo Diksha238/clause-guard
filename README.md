@@ -1,144 +1,102 @@
-# ⚖️ ClauseGuard — AI Legal Contract Analyzer
+# ClauseGuard
 
-Upload any contract PDF → ask questions in plain English → get clause-level risk analysis.
+AI-powered legal contract analyzer that parses contracts, flags risky clauses, and helps you understand what you're signing — built with a polyglot microservice architecture and deployed end-to-end on AWS and Vercel.
+
+🔗 **Live App:** [clause-guard-ui.vercel.app](https://clause-guard-ui.vercel.app)
+🔗 **API Docs:** [clauseguard.duckdns.org/docs](https://clauseguard.duckdns.org/docs)
+
+---
+
+## Features
+
+- 📄 **PDF Upload & Parsing** — extracts contract text using PyMuPDF
+- ⚠️ **Risk Scanning** — tags clauses as HIGH / MEDIUM / LOW risk using LLM-based analysis
+- 📝 **Contract Summary** — auto-generated plain-English summary of key terms
+- 🔍 **Clause Comparison** — compare clauses across multiple documents
+- 💬 **Persistent Chat** — ask questions about your contract with full chat history
+- 📊 **PDF Risk Report Export** — download a formatted risk report (built with ReportLab)
+- 🤖 **Model Picker** — switch between Groq Llama 3.3 70B/8B and Gemini 2.5 Flash-Lite
+- 🔐 **Google OAuth2 Login** — secure authentication via Spring Security + JWT
+- 🗂️ **ChatGPT-style Sidebar** — manage multiple documents in one workspace
+
+---
+
+## Tech Stack
+
+**Backend (RAG Core)** — FastAPI · LangChain · Groq (Llama 3.3 70B) · Gemini 2.5 Flash-Lite · pgvector · PyMuPDF · sentence-transformers (all-MiniLM-L6-v2) · ReportLab
+
+**Backend (Auth Service)** — Spring Boot 3 · Spring Security · OAuth2 Client (Google) · JWT · Hibernate/JPA
+
+**Frontend** — React (Create React App)
+
+**Database** — PostgreSQL 16 with pgvector extension
+
+**Infrastructure** — Docker Compose · Nginx (reverse proxy) · Let's Encrypt (SSL) · AWS EC2 (Ubuntu) · Vercel · DuckDNS
+
+---
 
 ## Architecture
 
 ```
-User uploads PDF
-     ↓
-FastAPI (Python) ← RAG Core
-     ↓
-PyMuPDF → text extract
-     ↓
-LangChain → chunks (500 tokens, 50 overlap)
-     ↓
-sentence-transformers → embeddings (all-MiniLM-L6-v2, dim=384)
-     ↓
-pgvector (PostgreSQL) → vector store
-     ↓
-User question → embed → cosine search → top-5 chunks
-     ↓
-Groq (Llama 3.3 70B) → generate answer with clause references
-     ↓
-Response + source clauses
+┌─────────────────┐      HTTPS       ┌──────────────────────────────────┐
+│  React Frontend │ ───────────────► │     Nginx (reverse proxy, SSL)    │
+│   (Vercel)       │                 │   clauseguard.duckdns.org         │
+└─────────────────┘                  └──────────────┬─────────────────┬─┘
+                                                      │                 │
+                                          /api/v1/*   │     /api/auth/*,│
+                                                      ▼     /oauth2/*   ▼
+                                          ┌───────────────┐  ┌──────────────────┐
+                                          │  FastAPI       │  │  Spring Boot      │
+                                          │  (RAG, LLMs)   │  │  (Auth, JWT, OAuth)│
+                                          └───────┬────────┘  └─────────┬─────────┘
+                                                  │                     │
+                                                  └─────────┬───────────┘
+                                                            ▼
+                                                  ┌────────────────────┐
+                                                  │ PostgreSQL + pgvector │
+                                                  └────────────────────┘
 ```
 
-## Stack
+All backend services run as Docker containers on a single AWS EC2 instance, orchestrated via Docker Compose, with Nginx handling SSL termination and routing.
 
-| Layer | Tech | Why |
-|-------|------|-----|
-| Backend (RAG) | Python + FastAPI | LangChain ecosystem maturity |
-| LLM | Groq Llama 3.3 70B | Fast inference, free tier |
-| Embeddings | sentence-transformers | Local, free, 384-dim |
-| Vector DB | pgvector (PostgreSQL) | No extra infra |
-| PDF Parsing | PyMuPDF | Fastest + cleanest |
-| Auth | Spring Boot | JWT expertise |
-| Frontend | React + Tailwind | ChatPDF-style UI |
+---
 
-## Quick Start
+## Local Setup
 
-### 1. Prerequisites
-- Docker + Docker Compose
-- Python 3.11+
-- Groq API key (free at console.groq.com)
+### Prerequisites
+- Docker & Docker Compose
+- Node.js 18+
+- Groq API key, Gemini API key, Google OAuth2 credentials
 
-### 2. Environment setup
+### Backend
 ```bash
-cd backend-python
-cp .env.example .env
-# Edit .env — add your GROQ_API_KEY
+git clone https://github.com/Diksha238/clause-guard.git
+cd clause-guard
+cp .env.example .env          # add POSTGRES_PASSWORD
+cp backend-python/.env.example backend-python/.env   # add GROQ_API_KEY, GEMINI_API_KEY
+cp backend-java/auth-service/.env.example backend-java/auth-service/.env  # add Google OAuth creds
+docker compose up -d --build
 ```
 
-### 3. Start with Docker
+### Frontend
 ```bash
-docker-compose up
+cd frontend
+npm install
+cp .env.example .env          # point REACT_APP_API_URL / REACT_APP_AUTH_API_URL to localhost
+npm start
 ```
 
-This starts:
-- PostgreSQL + pgvector on port 5432
-- FastAPI on port 8000
+---
 
-### 4. Without Docker (local dev)
-```bash
-cd backend-python
-pip install -r requirements.txt
-uvicorn main:app --reload
-```
+## Deployment Notes
 
-FastAPI docs: http://localhost:8000/docs
+- Backend containers run on a memory-constrained EC2 instance with swap configured to support all three services (Postgres, FastAPI, Spring Boot) concurrently
+- SSL certificates auto-renew via Certbot
+- CORS configured on both FastAPI and Spring Boot to allow the Vercel frontend origin
+- Database credentials are environment-variable driven (no hardcoded secrets in source)
 
-## API Endpoints
+---
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/health` | Health check |
-| POST | `/api/v1/upload` | Upload contract PDF |
-| POST | `/api/v1/chat` | Ask a question |
-| GET | `/api/v1/documents` | List user's contracts |
-| GET | `/api/v1/documents/{id}` | Get contract details |
-| DELETE | `/api/v1/documents/{id}` | Delete contract |
+## Author
 
-All endpoints require `X-User-Id` header (set by Spring Boot auth gateway in production).
-
-## Example Usage
-
-```bash
-# Upload a contract
-curl -X POST http://localhost:8000/api/v1/upload \
-  -H "X-User-Id: user123" \
-  -F "file=@employment_contract.pdf"
-# → {"document_id": "abc-123", "total_pages": 8, "total_chunks": 67}
-
-# Ask a question
-curl -X POST http://localhost:8000/api/v1/chat \
-  -H "X-User-Id: user123" \
-  -H "Content-Type: application/json" \
-  -d '{"document_id": "abc-123", "question": "What is the notice period?"}'
-# → {"answer": "The notice period is 30 days as specified in Clause 5.2 on page 3..."}
-```
-
-## Project Structure
-
-```
-clauseguard/
-├── backend-python/
-│   ├── main.py                  ← FastAPI app entry
-│   ├── config/
-│   │   ├── settings.py          ← Pydantic settings
-│   │   └── database.py          ← SQLAlchemy + pgvector
-│   ├── models/
-│   │   ├── db_models.py         ← Document + DocumentChunk ORM
-│   │   └── schemas.py           ← Pydantic request/response schemas
-│   ├── ingestion/
-│   │   ├── pdf_parser.py        ← PyMuPDF text extraction
-│   │   ├── chunker.py           ← LangChain text splitter
-│   │   ├── embedder.py          ← sentence-transformers
-│   │   └── pipeline.py          ← Full ingestion orchestrator
-│   ├── retrieval/
-│   │   ├── vector_search.py     ← pgvector cosine search
-│   │   └── llm_qa.py            ← Groq RAG answer generation
-│   ├── analysis/                ← Phase 2: risk detection
-│   ├── api/
-│   │   └── routes.py            ← All FastAPI routes
-│   └── tests/
-│       └── test_api.py          ← pytest suite
-│
-├── backend-java/                ← Phase 2: Spring Boot auth
-├── frontend/                    ← Phase 2: React dashboard
-└── docker-compose.yml
-```
-
-## Phases
-
-- **Phase 1 (Week 1-2)** ✅ — Core RAG: upload, chunk, embed, Q&A
-- **Phase 2 (Week 3-4)** — Risk scanner: non-compete, termination, liability, penalty detection
-- **Phase 3 (Week 5-6)** — Risk score 0-100, contract summary, comparison
-- **Phase 4 (Week 7-8)** — React dashboard, PDF highlighting, export report
-
-## Running Tests
-
-```bash
-cd backend-python
-pytest tests/ -v
-```
+**Diksha** — [GitHub](https://github.com/Diksha238)
